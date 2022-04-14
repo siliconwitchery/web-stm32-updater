@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css">
+    <link rel="shortcut icon" href="images/favicon.png" type="image/x-icon" />
+
+    <!-- SEO title & description -->
+    <title>WebUSB STM32 Updater Tool | Silicon Witchery</title>
+    <meta name="description" content="WebUSB based firmware upgrade tool for STM32 series devices.">
+    <link rel="canonical" href="https://siliconwitchery.github.io/web-stm32-updater/" />
+
+    <!-- Facebook & Twitter card meta -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@SiliconWitchery" />
+    <meta property="og:title" content="WebUSB STM32 Updater Tool | Silicon Witchery" />
+    <meta property="og:description" content="WebUSB based firmware upgrade tool for STM32 series devices." />
+    <meta property="og:image" content="https://siliconwitchery.github.io/web-stm32-updater/images/share.jpg" />
+    <meta property="og:url" content="https://siliconwitchery.github.io/web-stm32-updater/" />
+    <meta property="og:type" content="website" />
+
+    <!-- Script which contains the WebUSB API functions -->
+    <script src="usb.js"></script>
+</head>
+
+
+<!-- Page HTML content -->
+
+<body>
+    <div class="app">
+
+        <!-- Title -->
+        <h1>WebUSB STM32 Updater Tool</h1>
+
+        <!-- Buttons and progress bar -->
+        <div class="buttons-and-bar">
+
+            <!-- Connect/program button -->
+            <button id="connectProgramButton" title="Open USB connection pane">Connect</button>
+
+            <!-- Progress bar -->
+            <progress id="progressBar" value="0" max="100"></progress>
+
+        </div>
+
+        <!-- Footer -->
+        <footer>
+
+            <p>For help, bug reporting, and source code, visit the
+                <a href="https://github.com/siliconwitchery/web-stm32-updater" target="_blank">repository</a>
+            </p>
+
+            <p>Copyright © 2022 <a href="https://www.siliconwitchery.com" target="_blank">Silicon Witchery</a></p>
+
+        </footer>
+
+    </div>
+
+</body>
+
+
+<!-- Javascript for interacting with the button and progress bar -->
+
+<script>
+
+    // Reference to the buttons and progress bar
+    const connectProgramButton = document.getElementById('connectProgramButton');
+    const progressBar = document.getElementById('progressBar');
+
+    // State variable to keep track of what connection/programming state we're in
+    var state = 'disconnected';
+
+    // Logic for connecting when the button is pressed
+    connectProgramButton.addEventListener('click', function () {
+
+        switch (state) {
+
+            // When disconnected, i.e the first click
+            case 'disconnected':
+
+                // Reset the progress bar
+                progressBar.value = 0;
+
+                // Attempt to connect
+                connect()
+
+                    // Once connected
+                    .then(function () {
+
+                        // Set the state
+                        state = 'connected';
+
+                        // Update the button ready for Programming
+                        connectProgramButton.innerHTML = "Program";
+                        connectProgramButton.title = "Erase and flash the device";
+                    })
+
+                    // Catch errors
+                    .catch(function (error) {
+
+                        // Run the disconnect handler
+                        disconnectHandler();
+
+                        // Print the error
+                        //TODO
+
+                        // Log error to console
+                        console.error(error);
+                    })
+
+                break;
+
+            // On the second click
+            case 'connected':
+
+                // Update the button to show erasing
+                connectProgramButton.disabled = true;
+                connectProgramButton.innerHTML = "Erasing";
+                connectProgramButton.title = "";
+
+                // Reset the progress bar
+                progressBar.value = 0;
+
+                // Start the erase process
+                erase()
+
+                    // Once erased
+                    .then(function () {
+
+                        // Set the state
+                        state = 'erased';
+
+                        // Update the button to show programming
+                        connectProgramButton.innerHTML = "Programming";
+
+
+                    })
+
+                    // Catch errors
+                    .catch(function (error) {
+
+                        // Run the disconnect handler
+                        disconnectHandler();
+
+                        // Print the error
+                        //TODO
+
+                        // Log error to console
+                        console.error(error);
+                    })
+
+                break;
+        }
+
+    });
+
+    // Updates the progress bar value
+    function updateProgressBarHandler(value) {
+        progressBar.value = value;
+    }
+
+    // Handles disconnect events
+    function disconnectHandler() {
+
+        // Reset the button back to 'connect'
+        connectProgramButton.disabled = false;
+        connectProgramButton.innerHTML = "Connect";
+        connectProgramButton.title = "Open USB connection pane";
+
+        // Reset the progress bar
+        progressBar.value = 0;
+    }
+
+</script>
+
+</html>

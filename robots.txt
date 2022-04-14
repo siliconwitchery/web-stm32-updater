@@ -1,0 +1,9 @@
+# Silicon Witchery robots file
+
+User-agent: *
+
+Disallow: .gitignore
+Disallow: /LICENSE
+Disallow: /README.md
+
+Sitemap: https://siliconwitchery.github.io/web-stm32-updater/sitemap.xml
