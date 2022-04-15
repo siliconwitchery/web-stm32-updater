@@ -38,7 +38,7 @@
         <div class="buttons-and-bar">
 
             <!-- Connect/program button -->
-            <button id="connectProgramButton" title="Open USB connection pane">Connect</button>
+            <button id="connectProgramButton">Connect</button>
 
             <!-- Progress bar -->
             <progress id="progressBar" value="0" max="100"></progress>
@@ -65,96 +65,71 @@
 
 <script>
 
+    // Create a USB dfu object
+    let dfu = new dfuDevice();
+
     // Reference to the buttons and progress bar
     const connectProgramButton = document.getElementById('connectProgramButton');
     const progressBar = document.getElementById('progressBar');
 
-    // State variable to keep track of what connection/programming state we're in
-    var state = 'disconnected';
-
     // Logic for connecting when the button is pressed
     connectProgramButton.addEventListener('click', function () {
 
-        switch (state) {
+        // Run the update sequence
+        runUpdateSequence();
+    });
 
-            // When disconnected, i.e the first click
-            case 'disconnected':
+    // Executes the DFU sequence
+    async function runUpdateSequence() {
 
-                // Reset the progress bar
-                progressBar.value = 0;
+        // Attempt the sequence
+        try {
 
-                // Attempt to connect
-                connect()
+            // Update the button text and disable
+            connectProgramButton.innerHTML = "Connecting";
+            connectProgramButton.disabled = true;
 
-                    // Once connected
-                    .then(function () {
+            // Connect
+            await dfu.connect();
 
-                        // Set the state
-                        state = 'connected';
+            // Update the button text
+            connectProgramButton.innerHTML = "Erasing";
 
-                        // Update the button ready for Programming
-                        connectProgramButton.innerHTML = "Program";
-                        connectProgramButton.title = "Erase and flash the device";
-                    })
+            // Erase the chip
+            await dfu.erase();
 
-                    // Catch errors
-                    .catch(function (error) {
+            // Update the button text
+            connectProgramButton.innerHTML = "Programming";
 
-                        // Run the disconnect handler
-                        disconnectHandler();
+            // Program the chip
+            await dfu.program();
 
-                        // Print the error
-                        //TODO
+            // Update the button text
+            connectProgramButton.innerHTML = "Booting";
 
-                        // Log error to console
-                        console.error(error);
-                    })
+            // Detach the device
+            await dfu.detach();
 
-                break;
+            // Update the button text
+            connectProgramButton.innerHTML = "Disconnecting";
 
-            // On the second click
-            case 'connected':
+            // Disconnect
+            await dfu.disconnect();
 
-                // Update the button to show erasing
-                connectProgramButton.disabled = true;
-                connectProgramButton.innerHTML = "Erasing";
-                connectProgramButton.title = "";
-
-                // Reset the progress bar
-                progressBar.value = 0;
-
-                // Start the erase process
-                erase()
-
-                    // Once erased
-                    .then(function () {
-
-                        // Set the state
-                        state = 'erased';
-
-                        // Update the button to show programming
-                        connectProgramButton.innerHTML = "Programming";
-
-
-                    })
-
-                    // Catch errors
-                    .catch(function (error) {
-
-                        // Run the disconnect handler
-                        disconnectHandler();
-
-                        // Print the error
-                        //TODO
-
-                        // Log error to console
-                        console.error(error);
-                    })
-
-                break;
+            // Done
+            alert("Update complete!");
         }
 
-    });
+        // Catch errors
+        catch (error) {
+
+            // Always disconnect on error
+            dfu.disconnect();
+
+            // Print the error
+            alert(error);
+        }
+    }
 
     // Updates the progress bar value
     function updateProgressBarHandler(value) {
@@ -167,7 +142,6 @@
         // Reset the button back to 'connect'
         connectProgramButton.disabled = false;
         connectProgramButton.innerHTML = "Connect";
-        connectProgramButton.title = "Open USB connection pane";
 
         // Reset the progress bar
         progressBar.value = 0;
