@@ -3,6 +3,7 @@
 :root {
     --text-color: rgb(247, 247, 240);
     --bg-color: rgb(40, 41, 53);
+    --input-bg-color: rgb(30, 31, 43);
     --button-hover-color: rgb(100, 100, 110);
     --button-click-color: rgb(80, 80, 90);
     --button-disabled-color: rgb(90, 90, 100);
@@ -35,15 +36,21 @@ body {
     flex-direction: column;
 }
 
+input {
+    margin: 2rem 10px 0 10px;
+    padding: 5px;
+    background-color: var(--input-bg-color);
+    border: var(--text-color) solid 0.5px;
+    border-radius: 1px;
+}
+
 h1 {
     font-weight: 100;
-    margin-bottom: 1rem;
     text-transform: capitalize;
     letter-spacing: 0.08rem;
 }
 
 a {
-    margin-top: 2rem;
     font-weight: 700;
     letter-spacing: 0.08rem;
 }
@@ -55,7 +62,7 @@ a {
 
 button {
     padding: 5px;
-    margin: 1rem 5px;
+    margin: 1rem 10px;
     width: 7rem;
     border: var(--text-color) solid 1px;
     border-radius: 3px;
@@ -80,7 +87,7 @@ button:disabled {
 
 progress {
     margin-left: 1rem;
-    margin-right: 5px;
+    margin-right: 10px;
     width: 100rem;
     height: 0.4rem;
     align-self: center;
@@ -89,10 +96,11 @@ progress {
 footer {
     display: flex;
     justify-content: space-between;
-    margin-top: 1rem;
 }
 
 p {
+    margin-top: 1rem;
+    line-height: 1.7;
     font-size: x-small;
 }
 

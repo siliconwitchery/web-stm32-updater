@@ -1,3 +1,21 @@
+// ISC License
+// 
+// Copyright 2022 Silicon Witchery AB
+// 
+// Permission to use, copy, modify, and/or distribute this 
+// software for any purpose with or without fee is hereby granted, 
+// provided that the above copyright notice and this permission 
+// notice appear in all copies.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL 
+// WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED 
+// WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL 
+// THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR 
+// CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
+// LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, 
+// NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN 
+// CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+// 
 // Instructions of how the DFU sequence should work can be found in this app note:
 //   https://www.st.com/resource/en/application_note/cd00264379-usb-dfu-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf
 //
@@ -8,7 +26,7 @@
 //   https://web.dev/usb/
 
 
-let dfuDevice = class {
+let usbDfuDevice = class {
 
     // List of DFU requests we can perform
     dfuRequest = {
@@ -63,7 +81,7 @@ let dfuDevice = class {
         this.device = null;
     }
 
-    // Local function to get the DFU status and catch errors
+    // Helper function to get the latest DFU status
     async getStatus() {
 
         // Get 6 bytes with the status command
@@ -104,7 +122,7 @@ let dfuDevice = class {
         Promise.resolve(state);
     }
 
-    // Clears any pending status in the DFU engine
+    // Helper function which clears any pending status in the DFU engine
     async clearStatus() {
 
         // Issue tge status clear command
@@ -202,7 +220,7 @@ let dfuDevice = class {
             var done = (100 / (0x8020000 - 0x8000000)) * (address - 0x8000000);
 
             // Update the progress bar
-            updateProgressBarHandler(done);
+            dfuProgressHandler(done);
         }
 
         // Resolve when done
@@ -262,6 +280,58 @@ let dfuDevice = class {
         this.device = null;
 
         // Call the user disconnect handler to clean up the UI
-        disconnectHandler();
+        dfuDisconnectHandler();
     }
+
+    // Executes the full DFU sequence. 
+    async runUpdateSequence(binArray) {
+
+        // Attempt the sequence
+        try {
+
+            // Update the state
+            dfuStatusHandler("Connecting");
+
+            // Connect
+            await this.connect();
+
+            // Update the state
+            dfuStatusHandler("Erasing");
+
+            // Erase the chip
+            await this.erase();
+
+            // Update the state
+            dfuStatusHandler("Programming");
+
+            // Program the chip
+            await this.program();
+
+            // Update the state
+            dfuStatusHandler("Booting");
+
+            // Detach the device
+            await this.detach();
+
+            // Update the state
+            dfuStatusHandler("Disconnecting");
+
+            // Disconnect
+            await this.disconnect();
+
+            // Return success
+            Promise.resolve("Update Complete");
+        }
+
+        // Catch errors
+        catch (error) {
+
+            // Always disconnect on error
+            this.disconnect();
+
+            // Return the error
+            Promise.reject(error);
+        }
+    }
+
 }

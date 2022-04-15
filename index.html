@@ -33,6 +33,14 @@
 
         <!-- Title -->
         <h1>WebUSB STM32 Updater Tool</h1>
+        <p>This tool uses the WebUSB API to perform device firmware upgrade (DFU) on STM32 devices. Paste the link to
+            your file below and click connect to start the process. Visit our repository below to learn how this tool
+            works, and fork your own version with whatever customizations you need. Make sure you're using Chromium or
+            the latest <a href="https://www.google.com/chrome/" target="_blank">Chrome Desktop</a>.
+        </p>
+
+        <!-- Update file entry box -->
+        <input id="fileLocation" type="url" placeholder="https://server/yourFile.bin">
 
         <!-- Buttons and progress bar -->
         <div class="buttons-and-bar">
@@ -65,79 +73,65 @@
 
 <script>
 
-    // Create a USB dfu object
-    let dfu = new dfuDevice();
+    // Create a USB dfu device object
+    let dfu = new usbDfuDevice();
 
-    // Reference to the buttons and progress bar
+    // Reference to the file location box, button and progress bar
+    const fileLocation = document.getElementById('fileLocation');
     const connectProgramButton = document.getElementById('connectProgramButton');
     const progressBar = document.getElementById('progressBar');
 
-    // Logic for connecting when the button is pressed
+    // When the button is clicked
     connectProgramButton.addEventListener('click', function () {
 
-        // Run the update sequence
-        runUpdateSequence();
+        // Start the update function (This is an async process)
+        startUpdate();
     });
 
-    // Executes the DFU sequence
-    async function runUpdateSequence() {
+    async function startUpdate() {
 
-        // Attempt the sequence
+        // Disable the button
+        connectProgramButton.disabled = true;
+
         try {
+            // Disallow empty URLs
+            if (fileLocation.value == "") {
+                throw ("No URL provided");
+            }
 
-            // Update the button text and disable
-            connectProgramButton.innerHTML = "Connecting";
-            connectProgramButton.disabled = true;
+            let response = await fetch(fileLocation.value).catch(function (error) {
+                throw (error);
+            })
 
-            // Connect
-            await dfu.connect();
+            // Create byte array from the response
+            // let binaryData = new Uint8Array(response);
 
-            // Update the button text
-            connectProgramButton.innerHTML = "Erasing";
+            // Run the update sequence
+            // runUpdateSequence(binaryData)
 
-            // Erase the chip
-            await dfu.erase();
-
-            // Update the button text
-            connectProgramButton.innerHTML = "Programming";
-
-            // Program the chip
-            await dfu.program();
-
-            // Update the button text
-            connectProgramButton.innerHTML = "Booting";
-
-            // Detach the device
-            await dfu.detach();
-
-            // Update the button text
-            connectProgramButton.innerHTML = "Disconnecting";
-
-            // Disconnect
-            await dfu.disconnect();
-
-            // Done
-            alert("Update complete!");
         }
 
-        // Catch errors
         catch (error) {
+            // Reset the button and progress bar
+            dfuDisconnectHandler();
 
-            // Always disconnect on error
-            dfu.disconnect();
-
-            // Print the error
+            // Show the error as alert
             alert(error);
         }
     }
 
+    // Updates the button text
+    function dfuStatusHandler(status) {
+        connectProgramButton.innerHTML = status;
+    }
+
     // Updates the progress bar value
-    function updateProgressBarHandler(value) {
+    function dfuProgressHandler(value) {
         progressBar.value = value;
     }
 
     // Handles disconnect events
-    function disconnectHandler() {
+    function dfuDisconnectHandler() {
 
         // Reset the button back to 'connect'
         connectProgramButton.disabled = false;
