@@ -128,79 +128,102 @@ let usbDfuDevice = class {
     // operations
     async getStatus() {
 
-        // Get 6 bytes with the status command
-        let result = await this.device.controlTransferIn({
-            requestType: 'class',
-            recipient: 'interface',
-            request: this.dfuRequest.DFU_GETSTATUS,
-            value: 0,
-            index: 0
-        }, 6);
+        // Attempt to get status
+        try {
 
-        // Extract error value
-        let error = result.data.getUint8(0);
+            // Get 6 bytes with the status command
+            let result = await this.device.controlTransferIn({
+                requestType: 'class',
+                recipient: 'interface',
+                request: this.dfuRequest.DFU_GETSTATUS,
+                value: 0,
+                index: 0
+            }, 6);
 
-        // Extract state code
-        let state = result.data.getUint8(4);
+            // Extract the error code byte
+            let error = result.data.getUint8(0);
 
-        // Extract the timeout value
-        let pollTime = result.data.getUint8(1);
+            // Extract state code byte
+            let state = result.data.getUint8(4);
 
-        // Wait for the given time
-        console.log("Waiting: " + pollTime + "ms")
-        await new Promise(resolve => setTimeout(resolve, pollTime));
+            // Extract the poll timeout value
+            let pollTime = result.data.getUint8(1);
 
-        // If there is an error, or the state machine enters the error state
-        if (error != this.dfuError.OK ||
-            state == this.dfuState.STATE_ERROR) {
+            // Print info in the debug console
+            console.log("Status: " + Object.keys(dfu.dfuError)[error] +
+                " in dfu state: " + Object.keys(dfu.dfuState)[state] +
+                "Waiting" + pollTime + "ms");
 
-            // Return the error
-            Promise.reject(
-                "Error: " + Object.keys(dfu.dfuError)[error] +
-                " in dfu state: " + Object.keys(dfu.dfuState)[state]
-            );
+            // Wait for the given poll time
+            await new Promise(resolve => setTimeout(resolve, pollTime));
+
+            // If there's an error, or the state machine enters the error state
+            if (error != this.dfuError.OK ||
+                state == this.dfuState.STATE_ERROR) {
+
+                // Return the error info
+                throw ("Error: " + Object.keys(dfu.dfuError)[error] +
+                    " in dfu state: " + Object.keys(dfu.dfuState)[state]);
+
+                // This could be extended to return the error and state in a 
+                // more machine readable way for retrying operations. Here we
+                // just return an error string
+            }
+
+            // Otherwise if everything is ok, return the new state
+            return Promise.resolve(state);
         }
 
-        // TODO just for debugging, we can remove this later
-        console.log("Status: " + Object.keys(dfu.dfuError)[error] +
-            " in dfu state: " + Object.keys(dfu.dfuState)[state])
+        // Catch errors
+        catch (error) {
 
-        // Otherwise just return the state
-        Promise.resolve(state);
+            // Return the error
+            return Promise.reject(error);
+        }
+
     }
 
     // Helper function which clears any pending status in the DFU engine
     async clearStatus() {
 
-        // Issue tge status clear command
-        let result = await this.device.controlTransferOut({
-            requestType: 'class',
-            recipient: 'interface',
-            request: this.dfuRequest.DFU_CLRSTATUS,
-            value: 0,
-            index: 0
-        }, undefined)
+        // Attempt to clear the status registers
+        try {
 
-        // If error
-        if (result.status != 'ok') {
+            // Issue the status clear command
+            let result = await this.device.controlTransferOut({
+                requestType: 'class',
+                recipient: 'interface',
+                request: this.dfuRequest.DFU_CLRSTATUS,
+                value: 0,
+                index: 0
+            }, undefined)
 
-            // Return rejection
-            Promise.reject("Couldn't clear status");
+            // If we stall
+            if (result.status != 'ok') {
+
+                // Throw a rejection
+                throw ("Couldn't clear status");
+            }
         }
 
-        Promise.resolve();
+        // Catch errors
+        catch (error) {
+
+            // Return the error
+            return Promise.reject(error);
+        }
     }
 
     // Function to connect, returning status as promise
     async connect() {
 
-        // Try to connect
-        try {
+        // First ensure WebUSB is available
+        if (!navigator.usb) {
+            return Promise.reject("Web USB not available. Are you using Chrome?");
+        }
 
-            // First ensure WebUSB is available
-            if (!navigator.usb) {
-                Promise.reject("USB not available. Are you using Chrome?");
-            }
+        // Attempt to connect
+        try {
 
             // Request the device, filtering by ST-Micro's vendor ID
             this.device = await navigator.usb.requestDevice({
@@ -222,8 +245,10 @@ let usbDfuDevice = class {
             return Promise.resolve();
         }
 
-        // Return the error if any of the above fails
+        // Catch errors
         catch (error) {
+
+            // Return the error
             return Promise.reject(error);
         }
     }
@@ -241,97 +266,101 @@ let usbDfuDevice = class {
     // Function which erases the device
     async erase() {
 
-        // First clear the current status
-        await this.clearStatus();
+        // Attempt to erase
+        try {
 
-        // For the entire flash, erase 1 page at a time starting at 0x08000000
-        for (var address = 0x8000000; address < this.flashEnd; address += this.pageSize) {
+            // First clear the current status
+            await this.clearStatus();
 
-            // TODO just for debugging, we can remove this
-            console.log("Erasing 128 bytes at 0x0" + address.toString(16).toUpperCase());
+            // For the entire flash, erase 1 page at a time starting at 0x08000000
+            for (var address = 0x8000000; address < this.flashEnd; address += this.pageSize) {
 
-            // Array containing the erase command and address to erase (LSB first)
-            let arr = new Uint8Array([
-                0x41,
-                (address & 0x000000ff),
-                (address & 0x0000ff00) >> 8,
-                (address & 0x00ff0000) >> 16,
-                (address & 0xff000000) >> 24
-            ]);
+                // TODO just for debugging, we can remove this
+                console.log("Erasing 128 bytes at 0x0" + address.toString(16).toUpperCase());
 
-            // Perform the erase
-            await this.device.controlTransferOut({
-                requestType: 'class',
-                recipient: 'interface',
-                request: this.dfuRequest.DFU_DNLOAD,
-                value: 0, // wValue Should be 0 for command mode
-                index: 0
-            }, arr); // Holds the erase instruction and address location
+                // Array containing the erase command and address to erase (LSB first)
+                let arr = new Uint8Array([
+                    0x41,
+                    (address & 0x000000ff),
+                    (address & 0x0000ff00) >> 8,
+                    (address & 0x00ff0000) >> 16,
+                    (address & 0xff000000) >> 24
+                ]);
 
-            // Issue a get status to apply the operation
-            await this.getStatus();
+                // Perform the erase
+                await this.device.controlTransferOut({
+                    requestType: 'class',
+                    recipient: 'interface',
+                    request: this.dfuRequest.DFU_DNLOAD,
+                    value: 0, // wValue Should be 0 for command mode
+                    index: 0
+                }, arr); // Holds the erase instruction and address location
 
-            // Check again if it was successful
-            await this.getStatus();
+                // Issue a get status to apply the operation
+                await this.getStatus();
 
-            // Work out the percentage done and update the progress bar
-            var done = (100 / (this.flashEnd - 0x8000000)) * (address - 0x8000000);
+                // Check again if it was successful
+                await this.getStatus();
 
-            // Update the progress bar
-            dfuProgressHandler(done);
+                // Work out the percentage done and update the progress bar
+                var done = (100 / (this.flashEnd - 0x8000000)) * (address - 0x8000000);
+
+                // Update the progress bar
+                dfuProgressHandler(done);
+            }
         }
 
-        // Resolve when done
-        return Promise.resolve();
+        // Catch errors
+        catch (error) {
+
+            // Return the error
+            return Promise.reject(error);
+        }
     }
 
     // Function to program the device
-    async program() {
+    async program(firmwareDataArray) {
         // TODO
-        return Promise.resolve();
     }
 
     // Sequence to exit DFU mode, and start the application
     async detach() {
 
-        // First clear the current state
-        await this.clearStatus();
+        // Attempt to detach
+        try {
 
-        // Next download 0 bytes to the device
-        await this.device.controlTransferOut({
-            requestType: 'class',
-            recipient: 'interface',
-            request: this.dfuRequest.DFU_DNLOAD,
-            value: 0, // Write 0 bytes
-            index: 0
-        }, undefined)
+            // First clear the current state
+            await this.clearStatus();
 
-        // Finally read the status to trigger a reset
-        await this.getStatus();
+            // Next download 0 bytes to the device
+            await this.device.controlTransferOut({
+                requestType: 'class',
+                recipient: 'interface',
+                request: this.dfuRequest.DFU_DNLOAD,
+                value: 0, // Write 0 bytes
+                index: 0
+            }, undefined)
+
+            // Finally read the status to trigger a reset
+            await this.getStatus();
+        }
+
+        // Catch errors
+        catch (error) {
+
+            // Return the error
+            return Promise.reject(error);
+        }
     }
 
     // Function which disconnects the USB device
     async disconnect() {
 
-        // Attempt to shutdown the USB connection
-        try {
+        // If the device exists and is open
+        if (this.device != null) {
 
-            // If the device exists
-            if (this.device != null) {
-
-                // Close the USB device
-                await this.device.close();
-            }
-
-            // Return resolved
-            Promise.resolve();
-        }
-
-        // Otherwise return the error
-        catch (error) {
-
-            // Return the error
-            Promise.reject(error);
+            // Close the USB device
+            await this.device.close();
         }
 
         // Null the device
@@ -365,8 +394,8 @@ let usbDfuDevice = class {
             // Update the state
             dfuStatusHandler("Programming");
 
-            // Program the chip
-            await this.program();
+            // Program the chip with the binary array
+            await this.program(binArray);
 
             // Update the state
             dfuStatusHandler("Booting");
@@ -381,7 +410,7 @@ let usbDfuDevice = class {
             await this.disconnect();
 
             // Return success
-            Promise.resolve("Update Complete");
+            return Promise.resolve("Update Complete");
         }
 
         // Catch errors
@@ -391,7 +420,7 @@ let usbDfuDevice = class {
             this.disconnect();
 
             // Return the error
-            Promise.reject(error);
+            return Promise.reject(error);
         }
     }
 }

@@ -140,14 +140,14 @@
             // Parse and validate that the page size is a number
             let pageSize = parseInt(pageSizeBox.value);
 
-            if (isNaN(flashSize)) {
+            if (isNaN(pageSize)) {
                 throw ("Page size is invalid. Can be Hex or Dec format");
             }
 
             // Run the update sequence
-            // TODO why isn't this error caught?
             await dfu.runUpdateSequence(binaryData, flashSize, pageSize);
 
+            // Done
             alert("Done!");
         }
 
