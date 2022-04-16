@@ -17,7 +17,7 @@
     <meta name="twitter:site" content="@SiliconWitchery" />
     <meta property="og:title" content="WebUSB STM32 Updater Tool | Silicon Witchery" />
     <meta property="og:description" content="WebUSB based firmware upgrade tool for STM32 series devices." />
-    <meta property="og:image" content="https://siliconwitchery.github.io/web-stm32-updater/images/share.jpg" />
+    <meta property="og:image" content="https://siliconwitchery.github.io/web-stm32-updater/images/share.png" />
     <meta property="og:url" content="https://siliconwitchery.github.io/web-stm32-updater/" />
     <meta property="og:type" content="website" />
 
@@ -34,13 +34,27 @@
         <!-- Title -->
         <h1>WebUSB STM32 Updater Tool</h1>
         <p>This tool uses the WebUSB API to perform device firmware upgrade (DFU) on STM32 devices. Paste the link to
-            your file below and click connect to start the process. Visit our repository below to learn how this tool
-            works, and fork your own version with whatever customizations you need. Make sure you're using Chromium or
-            the latest <a href="https://www.google.com/chrome/" target="_blank">Chrome Desktop</a>.
+            your file below and enter both the flash size, and page size for your device. This can be either in
+            hexadecimal (e.g. 0x20) or decimal (e.g. 128). Click connect to start the DFU process. Visit our repository
+            below to learn how this tool works, and fork your own version with whatever customizations you need. Make
+            sure you're using Chromium or the latest <a href="https://www.google.com/chrome/" target="_blank">Chrome
+                Desktop</a>.
         </p>
 
-        <!-- Update file entry box -->
-        <input id="fileLocation" type="url" placeholder="https://server/yourFile.bin">
+        <!-- Text entry boxes -->
+        <div class="entry-boxes">
+
+            <!-- Update file entry box -->
+            <input id="fileLocationBox" style="flex-grow: 1;" type="url" placeholder="https://server/yourFile.bin">
+
+            <!-- Flash size entry box -->
+            <input id="flashSizeBox" type="text" size="11" placeholder="Flash size">
+
+            <!-- Page size entry box -->
+            <input id="pageSizeBox" type="text" size="11" placeholder="Page size">
+
+
+        </div>
 
         <!-- Buttons and progress bar -->
         <div class="buttons-and-bar">
@@ -76,8 +90,10 @@
     // Create a USB dfu device object
     let dfu = new usbDfuDevice();
 
-    // Reference to the file location box, button and progress bar
-    const fileLocation = document.getElementById('fileLocation');
+    // Reference to the text boxes, button and progress bar
+    const fileLocationBox = document.getElementById('fileLocationBox');
+    const flashSizeBox = document.getElementById('flashSizeBox');
+    const pageSizeBox = document.getElementById('pageSizeBox');
     const connectProgramButton = document.getElementById('connectProgramButton');
     const progressBar = document.getElementById('progressBar');
 
@@ -98,13 +114,13 @@
         try {
 
             // Disallow empty URLs
-            if (fileLocation.value == "") {
+            if (fileLocationBox.value == "") {
                 throw ("No URL provided");
             }
 
             // Attempt to get the file. Note, your browser will block this if you try to run it locally
             // See here: https://stackoverflow.com/questions/43262121/trying-to-use-fetch-and-pass-in-mode-no-cors 
-            let response = await fetch(fileLocation.value);
+            let response = await fetch(fileLocationBox.value);
 
             // This needs to be here to catch things like 404 errors, which aren't counted as a promise failure
             if (!response.ok) {
@@ -114,9 +130,23 @@
             // Create byte array from the response
             let binaryData = response.arrayBuffer();
 
+            // Parse and validate that the flash size is a number
+            let flashSize = parseInt(flashSizeBox.value);
+
+            if (isNaN(flashSize)) {
+                throw ("Flash size is invalid. Can be Hex or Dec format");
+            }
+
+            // Parse and validate that the page size is a number
+            let pageSize = parseInt(pageSizeBox.value);
+
+            if (isNaN(flashSize)) {
+                throw ("Page size is invalid. Can be Hex or Dec format");
+            }
+
             // Run the update sequence
             // TODO why isn't this error caught?
-            await dfu.runUpdateSequence(binaryData);
+            await dfu.runUpdateSequence(binaryData, flashSize, pageSize);
 
             alert("Done!");
         }

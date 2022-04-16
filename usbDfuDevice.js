@@ -23,15 +23,17 @@
 //  
 //          <script src="usbDfuDevice.js"></script>
 //   
-//      Then create an instance of the dfu object inside your <script> block:
+//      Then create an instance of the dfu object inside your <script> block. 
 //  
 //          let dfu = new usbDfuDevice();
 //  
 //      Once you have retrieved your update.bin file, call the function
 //      runUpdateSequence() and pass the arrayBuffer containing your 
-//      firmware.
+//      firmware. It doesn't seem straightforward to automatically get flash and 
+//      page size within the bootloader. So you'll need to provide both these 
+//      values too.
 //  
-//          await dfu.runUpdateSequence(binaryData);
+//          await dfu.runUpdateSequence(binaryData, flashSize, pageSize);
 //  
 //      A connection pane will appear, and any devices with the STM32 vendorID 
 //      will be shown. Note the device must be in DFU mode. This is usually 
@@ -114,6 +116,12 @@ let usbDfuDevice = class {
 
         // Creates a null device object
         this.device = null;
+
+        // End of the flash in bytes
+        this.flashEnd = 0x08020000;
+
+        // Page size in bytes
+        this.pageSize = 0x80;
     }
 
     // Helper function to get the latest DFU status. Often required before new 
@@ -220,22 +228,29 @@ let usbDfuDevice = class {
         }
     }
 
+    // Sets the internal variables with the flash and page sizes provided
+    setFlashAndPageSizes(flashSize, pageSize) {
+
+        // Set the flash end as an offset from 0x08000000
+        this.flashEnd = 0x08000000 + flashSize;
+
+        // Set the page size
+        this.pageSize = pageSize;
+    }
+
     // Function which erases the device
     async erase() {
 
         // First clear the current status
         await this.clearStatus();
 
-        // For the entire 128k of flash, increment 1 page (128 bytes) at a time. 
-        // Starting at 0x08000000
-        // TODO make this dynamic depending on device flash size, or binary size
-        for (var address = 0x8000000; address < 0x8020000; address += 0x80) {
+        // For the entire flash, erase 1 page at a time starting at 0x08000000
+        for (var address = 0x8000000; address < this.flashEnd; address += this.pageSize) {
 
             // TODO just for debugging, we can remove this
             console.log("Erasing 128 bytes at 0x0" + address.toString(16).toUpperCase());
 
-            // Create an array with the erase command and address we want to 
-            // erase (LSB first)
+            // Array containing the erase command and address to erase (LSB first)
             let arr = new Uint8Array([
                 0x41,
                 (address & 0x000000ff),
@@ -260,7 +275,7 @@ let usbDfuDevice = class {
             await this.getStatus();
 
             // Work out the percentage done and update the progress bar
-            var done = (100 / (0x8020000 - 0x8000000)) * (address - 0x8000000);
+            var done = (100 / (this.flashEnd - 0x8000000)) * (address - 0x8000000);
 
             // Update the progress bar
             dfuProgressHandler(done);
@@ -327,10 +342,13 @@ let usbDfuDevice = class {
     }
 
     // Executes the full DFU sequence. 
-    async runUpdateSequence(binArray) {
+    async runUpdateSequence(binArray, flashSize, pageSize) {
 
         // Attempt the sequence
         try {
+
+            // Set flash and page size
+            this.setFlashAndPageSizes(flashSize, pageSize);
 
             // Update the state
             dfuStatusHandler("Connecting");

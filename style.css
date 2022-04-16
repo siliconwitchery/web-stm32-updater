@@ -55,6 +55,7 @@ a {
     letter-spacing: 0.08rem;
 }
 
+.entry-boxes,
 .buttons-and-bar {
     display: flex;
     justify-content: space-between;
