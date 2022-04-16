@@ -2,33 +2,68 @@
 // 
 // Copyright 2022 Silicon Witchery AB
 // 
-// Permission to use, copy, modify, and/or distribute this 
-// software for any purpose with or without fee is hereby granted, 
-// provided that the above copyright notice and this permission 
-// notice appear in all copies.
+// Permission to use, copy, modify, and/or distribute this software for any 
+// purpose with or without fee is hereby granted, provided that the above 
+// copyright notice and this permission notice appear in all copies.
 // 
-// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL 
-// WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED 
-// WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL 
-// THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR 
-// CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
-// LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, 
-// NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN 
-// CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-// 
-// Instructions of how the DFU sequence should work can be found in this app note:
-//   https://www.st.com/resource/en/application_note/cd00264379-usb-dfu-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf
+// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH 
+// REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY 
+// AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, 
+// INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
+// LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR 
+// OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR 
+// PERFORMANCE OF THIS SOFTWARE.
+//  
+//  
+//      This file contains everything needed for implementing a basic USB 
+//      firmware upgrade using Chrome to STM32 based devices. This is how to get 
+//      started
+//   
+//      Firstly, include this file into your HTML <head> block:
+//  
+//          <script src="usbDfuDevice.js"></script>
+//   
+//      Then create an instance of the dfu object inside your <script> block:
+//  
+//          let dfu = new usbDfuDevice();
+//  
+//      Once you have retrieved your update.bin file, call the function
+//      runUpdateSequence() and pass the arrayBuffer containing your 
+//      firmware.
+//  
+//          await dfu.runUpdateSequence(binaryData);
+//  
+//      A connection pane will appear, and any devices with the STM32 vendorID 
+//      will be shown. Note the device must be in DFU mode. This is usually 
+//      achieved by holding the BOOT pin during reset of the STM32. The update 
+//      sequence function is asynchronous so the await keyword can be used. It 
+//      returns a promise on completion.
+//   
+//      It's also possible to call the update steps manually. Look at the 
+//      runUpdateSequence() function to see how this is done.
 //
-// Exact spec of the USB DFU protocol is here:
-//   https://www.usb.org/sites/default/files/DFU_1.1.pdf
+//      Further details on how the DFU sequence should work can be found within 
+//      this application note:
+//  
+//          https://www.st.com/resource/en/application_note/cd00264379-usb-dfu-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf
+//  
+//      The exact specification of the USB DFU protocol is documented here:
+//  
+//          https://www.usb.org/sites/default/files/DFU_1.1.pdf
+//  
+//      More details of the WebUSB API can be found here: 
+//  
+//          https://web.dev/usb/
 //
-// More details of the WebUSB API can be found here: 
-//   https://web.dev/usb/
+//      To learn more about us, visit out website:
+//
+//          https://www.siliconwitchery.com
 
 
+// Class constructor containing all the DFU functions and parameters 
 let usbDfuDevice = class {
 
-    // List of DFU requests we can perform
+    // List of DFU requests we can perform. These are according to the DFU spec
     dfuRequest = {
         DFU_DETACH: 0x00,
         DFU_DNLOAD: 0x01,
@@ -39,7 +74,7 @@ let usbDfuDevice = class {
         DFU_ABORT: 0x06
     }
 
-    // List of states the DFU state machine can go into
+    // List of states the DFU state machine can be in. Also according to spec
     dfuState = {
         STATE_APP_IDLE: 0,
         STATE_APP_DETACH: 1,
@@ -54,7 +89,7 @@ let usbDfuDevice = class {
         STATE_ERROR: 10
     }
 
-    // List of Status error codes
+    // Finally, the list of error codes which can return. Again part of the spec
     dfuError = {
         OK: 0,
         ERROR_TARGET: 1,
@@ -74,14 +109,15 @@ let usbDfuDevice = class {
         ERROR_STALLEDPKT: 15
     }
 
-    // Setup
+    // When an new instance of the dfu object is created, this will be called
     constructor() {
 
-        // Create a null device object
+        // Creates a null device object
         this.device = null;
     }
 
-    // Helper function to get the latest DFU status
+    // Helper function to get the latest DFU status. Often required before new 
+    // operations
     async getStatus() {
 
         // Get 6 bytes with the status command
@@ -112,11 +148,14 @@ let usbDfuDevice = class {
 
             // Return the error
             Promise.reject(
-                "Error: " + Object.keys(dfu.dfuError)[error] + " in dfu state: " + Object.keys(dfu.dfuState)[state]
+                "Error: " + Object.keys(dfu.dfuError)[error] +
+                " in dfu state: " + Object.keys(dfu.dfuState)[state]
             );
         }
 
-        console.log("Status: " + Object.keys(dfu.dfuError)[error] + " in dfu state: " + Object.keys(dfu.dfuState)[state])
+        // TODO just for debugging, we can remove this later
+        console.log("Status: " + Object.keys(dfu.dfuError)[error] +
+            " in dfu state: " + Object.keys(dfu.dfuState)[state])
 
         // Otherwise just return the state
         Promise.resolve(state);
@@ -152,7 +191,7 @@ let usbDfuDevice = class {
 
             // First ensure WebUSB is available
             if (!navigator.usb) {
-                Promise.reject("USB not available on this browser. Are you using Chrome?");
+                Promise.reject("USB not available. Are you using Chrome?");
             }
 
             // Request the device, filtering by ST-Micro's vendor ID
@@ -187,12 +226,16 @@ let usbDfuDevice = class {
         // First clear the current status
         await this.clearStatus();
 
-        // For the entire 128k of flash, increment 1 page (128 bytes) at a time. Starting at 0x08000000
+        // For the entire 128k of flash, increment 1 page (128 bytes) at a time. 
+        // Starting at 0x08000000
+        // TODO make this dynamic depending on device flash size, or binary size
         for (var address = 0x8000000; address < 0x8020000; address += 0x80) {
 
+            // TODO just for debugging, we can remove this
             console.log("Erasing 128 bytes at 0x0" + address.toString(16).toUpperCase());
 
-            // Create an array with the erase command and address we want to erase (LSB first)
+            // Create an array with the erase command and address we want to 
+            // erase (LSB first)
             let arr = new Uint8Array([
                 0x41,
                 (address & 0x000000ff),
@@ -208,7 +251,7 @@ let usbDfuDevice = class {
                 request: this.dfuRequest.DFU_DNLOAD,
                 value: 0, // wValue Should be 0 for command mode
                 index: 0
-            }, arr); // Array which holds the erase instruction and address location
+            }, arr); // Holds the erase instruction and address location
 
             // Issue a get status to apply the operation
             await this.getStatus();
@@ -333,5 +376,4 @@ let usbDfuDevice = class {
             Promise.reject(error);
         }
     }
-
 }
