@@ -31,9 +31,9 @@
 //      runUpdateSequence() and pass the arrayBuffer containing your 
 //      firmware. It doesn't seem straightforward to automatically get flash and 
 //      page size within the bootloader. So you'll need to provide both these 
-//      values too.
+//      values too. They can be as strings (hex or dec format) or as a number.
 //  
-//          await dfu.runUpdateSequence(binaryData, flashSize, pageSize);
+//          await dfu.runUpdateSequence(binaryData, flashSizeStr, pageSizeStr);
 //  
 //      A connection pane will appear, and any devices with the STM32 vendorID 
 //      will be shown. Note the device must be in DFU mode. This is usually 
@@ -254,13 +254,59 @@ let usbDfuDevice = class {
     }
 
     // Sets the internal variables with the flash and page sizes provided
-    setFlashAndPageSizes(flashSize, pageSize) {
+    async setFlashAndPageSizes(flashSizeStr, pageSizeStr) {
 
-        // Set the flash end as an offset from 0x08000000
-        this.flashEnd = 0x08000000 + flashSize;
+        // Attempt to set the flash and page sizes
+        try {
 
-        // Set the page size
-        this.pageSize = pageSize;
+            // Parse and validate that the flash size is a number
+            let flashSize = parseInt(flashSizeStr);
+
+            if (isNaN(flashSize)) {
+                throw ("Flash size is invalid. Can be as a hexadecimal value" +
+                    " (e.g. 0x20000) or as a decimal value (e.g. 131072)");
+            }
+
+            // Parse and validate that the page size is a number
+            let pageSize = parseInt(pageSizeStr);
+
+            if (isNaN(pageSize)) {
+                throw ("Page size is invalid. Can be as a hexadecimal value" +
+                    " (e.g. 0x20) or as a decimal value (e.g. 128)");
+            }
+
+            // Flash size should be divisible by 1024
+            if (flashSize % 1024 != 0) {
+                throw ("Flash size must be divisible by 1024 bytes")
+            }
+
+            // Set the flash end as an offset from 0x08000000
+            this.flashEnd = 0x08000000 + flashSize;
+
+            // Page size must be word aligned
+            if (pageSize % 4 != 0) {
+                throw ("Page size must be word alined, i.e. divisible by 4")
+            }
+
+            // Set the page size
+            this.pageSize = pageSize;
+
+            // check that pages fit into the flash size
+            if (flashSize % pageSize != 0) {
+                throw ("Flash size should be divisible by page size")
+            }
+
+            // Print info to the console
+            console.log("Flash size okay: " + flashSize / 1024 + " KB");
+            console.log("Page size okay: " + pageSize + " B");
+        }
+
+        // Catch errors
+        catch (error) {
+
+            // Return the error
+            return Promise.reject(error);
+        }
     }
 
     // Function which erases the device
@@ -275,8 +321,9 @@ let usbDfuDevice = class {
             // For the entire flash, erase 1 page at a time starting at 0x08000000
             for (var address = 0x8000000; address < this.flashEnd; address += this.pageSize) {
 
-                // TODO just for debugging, we can remove this
-                console.log("Erasing 128 bytes at 0x0" + address.toString(16).toUpperCase());
+                // Print the erase operation to the console
+                console.log("Erasing " + this.pageSize + " bytes at 0x0" +
+                    address.toString(16).toUpperCase());
 
                 // Array containing the erase command and address to erase (LSB first)
                 let arr = new Uint8Array([
@@ -371,13 +418,13 @@ let usbDfuDevice = class {
     }
 
     // Executes the full DFU sequence. 
-    async runUpdateSequence(binArray, flashSize, pageSize) {
+    async runUpdateSequence(binArray, flashSizeStr, pageSizeStr) {
 
         // Attempt the sequence
         try {
 
             // Set flash and page size
-            this.setFlashAndPageSizes(flashSize, pageSize);
+            await this.setFlashAndPageSizes(flashSizeStr, pageSizeStr);
 
             // Update the state
             dfuStatusHandler("Connecting");

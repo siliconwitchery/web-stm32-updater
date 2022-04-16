@@ -130,22 +130,8 @@
             // Create byte array from the response
             let binaryData = response.arrayBuffer();
 
-            // Parse and validate that the flash size is a number
-            let flashSize = parseInt(flashSizeBox.value);
-
-            if (isNaN(flashSize)) {
-                throw ("Flash size is invalid. Can be Hex or Dec format");
-            }
-
-            // Parse and validate that the page size is a number
-            let pageSize = parseInt(pageSizeBox.value);
-
-            if (isNaN(pageSize)) {
-                throw ("Page size is invalid. Can be Hex or Dec format");
-            }
-
             // Run the update sequence
-            await dfu.runUpdateSequence(binaryData, flashSize, pageSize);
+            await dfu.runUpdateSequence(binaryData, flashSizeBox.value, pageSizeBox.value);
 
             // Done
             alert("Done!");
