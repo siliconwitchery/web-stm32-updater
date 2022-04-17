@@ -318,8 +318,8 @@ let usbDfuDevice = class {
             // First clear the current status
             await this.clearStatus();
 
-            // For the entire flash, erase 1 page at a time starting at 0x08000000
-            for (var address = 0x8000000; address < this.flashEnd; address += this.pageSize) {
+            // For the entire flash, erase 1 page at a time from 0x08000000
+            for (let address = 0x8000000; address < this.flashEnd; address += this.pageSize) {
 
                 // Print the erase operation to the console
                 console.log("Erasing " + this.pageSize + " bytes at 0x0" +
@@ -350,7 +350,7 @@ let usbDfuDevice = class {
                 await this.getStatus();
 
                 // Work out the percentage done and update the progress bar
-                var done = (100 / (this.flashEnd - 0x8000000)) * (address - 0x8000000);
+                let done = (100 / (this.flashEnd - 0x8000000)) * (address - 0x8000000);
 
                 // Update the progress bar
                 dfuProgressHandler(done);
@@ -366,8 +366,70 @@ let usbDfuDevice = class {
     }
 
     // Function to program the device
-    async program(firmwareDataArray) {
-        // TODO
+    async program(fileArr) {
+
+        // Attempt to program
+        try {
+
+            // TODO do we need to clear status?
+            // await this.clearStatus();
+
+            // Set the address pointer to 0x08000000 (The start of the flash)
+            await this.device.controlTransferOut({
+                requestType: 'class',
+                recipient: 'interface',
+                request: this.dfuRequest.DFU_DNLOAD,
+                value: 0, // wValue Should be 0 for command mode
+                index: 0
+            }, new Uint8Array([0x21, 0x00, 0x00, 0x00, 0x08]));
+
+            // Issue a get status to apply the operation
+            await this.getStatus();
+
+            // Check again if it was successful
+            await this.getStatus();
+
+            // Calculate the total pages to flash
+            let totalPagesToFlash = Math.ceil(fileArr.byteLength / this.pageSize);
+
+            // If the total is more than the flash size, throw an error
+            if (totalPagesToFlash > (this.flashEnd - 0x08000000) / this.pageSize) {
+                throw ("File size bigger than flash size");
+            }
+
+            // For every page
+            for (let page = 0; page < totalPagesToFlash; page++) {
+
+                // Log the current page info to the console
+                console.log("Flashing " + page + " of " + totalPagesToFlash + " pages");
+
+                // Calculate the data offset and bounds based on the current page
+                let dataStart = page * this.pageSize;
+                let dataEnd = dataStart + this.pageSize;
+
+                // Write page by page 
+                await this.device.controlTransferOut({
+                    requestType: 'class',
+                    recipient: 'interface',
+                    request: this.dfuRequest.DFU_DNLOAD,
+                    value: 2 + page, // wValue should be the page number + 2 
+                    index: 0
+                }, new Uint8Array(fileArr.slice(dataStart, dataEnd))); // Page of data
+
+                // Issue a get status to apply the operation
+                await this.getStatus();
+
+                // Check again if it was successful
+                await this.getStatus();
+            }
+        }
+
+        // Catch errors
+        catch (error) {
+
+            // Return the error
+            return Promise.reject(error);
+        }
     }
 
     // Sequence to exit DFU mode, and start the application
@@ -418,7 +480,7 @@ let usbDfuDevice = class {
     }
 
     // Executes the full DFU sequence. 
-    async runUpdateSequence(binArray, flashSizeStr, pageSizeStr) {
+    async runUpdateSequence(fileArr, flashSizeStr, pageSizeStr) {
 
         // Attempt the sequence
         try {
@@ -442,7 +504,7 @@ let usbDfuDevice = class {
             dfuStatusHandler("Programming");
 
             // Program the chip with the binary array
-            await this.program(binArray);
+            await this.program(fileArr);
 
             // Update the state
             dfuStatusHandler("Booting");

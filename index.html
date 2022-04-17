@@ -127,11 +127,11 @@
                 throw (response.status + " " + response.statusText);
             }
 
-            // Create byte array from the response
-            let binaryData = response.arrayBuffer();
+            // Create an array buffer containing the file data
+            let fileArr = await response.arrayBuffer();
 
             // Run the update sequence
-            await dfu.runUpdateSequence(binaryData, flashSizeBox.value, pageSizeBox.value);
+            await dfu.runUpdateSequence(fileArr, flashSizeBox.value, pageSizeBox.value);
 
             // Done
             alert("Done!");
