@@ -152,7 +152,7 @@ let usbDfuDevice = class {
             // Print info in the debug console
             console.log("Status: " + Object.keys(dfu.dfuError)[error] +
                 " in dfu state: " + Object.keys(dfu.dfuState)[state] +
-                "Waiting" + pollTime + "ms");
+                ", Waiting: " + pollTime + "ms");
 
             // Wait for the given poll time
             await new Promise(resolve => setTimeout(resolve, pollTime));
@@ -202,8 +202,64 @@ let usbDfuDevice = class {
             if (result.status != 'ok') {
 
                 // Throw a rejection
-                throw ("Couldn't clear status");
+                throw ("Error: Couldn't clear status");
             }
+        }
+
+        // Catch errors
+        catch (error) {
+
+            // Return the error
+            return Promise.reject(error);
+        }
+    }
+
+    // Sets the internal variables with the flash and page sizes provided
+    async setFlashAndPageSizes(flashSizeStr, pageSizeStr) {
+
+        // Attempt to set the flash and page sizes
+        try {
+
+            // Parse and validate that the flash size is a number
+            let flashSize = parseInt(flashSizeStr);
+
+            if (isNaN(flashSize)) {
+                throw ("Error: Flash size is invalid. It should be a hex" +
+                    " value (e.g. 0x20000) or a decimal value (e.g. 131072)");
+            }
+
+            // Parse and validate that the page size is a number
+            let pageSize = parseInt(pageSizeStr);
+
+            if (isNaN(pageSize)) {
+                throw ("Error: Page size is invalid. It should be a hex" +
+                    " value (e.g. 0x20) or a decimal value (e.g. 128)");
+            }
+
+            // Flash size should be divisible by 1024
+            if (flashSize % 1024 != 0) {
+                throw ("Error: Flash size should be divisible by 1024 bytes")
+            }
+
+            // Set the flash end as an offset from 0x08000000
+            this.flashEnd = 0x08000000 + flashSize;
+
+            // Page size must be word aligned
+            if (pageSize % 4 != 0) {
+                throw ("Error: Page size should be word alined, i.e. divisible by 4")
+            }
+
+            // Set the page size
+            this.pageSize = pageSize;
+
+            // check that pages fit into the flash size
+            if (flashSize % pageSize != 0) {
+                throw ("Error: Flash size should be divisible by page size")
+            }
+
+            // Print info to the console
+            console.log("Flash size set to: " + flashSize / 1024 + " KB");
+            console.log("Page size set to: " + pageSize + " B");
         }
 
         // Catch errors
@@ -241,64 +297,15 @@ let usbDfuDevice = class {
             // Claim interface
             await this.device.claimInterface(0);
 
+            // Print some info to the console
+            console.log("Connected to device. Serial number: " +
+                this.device.serialNumber);
+
+            // Clear the current state. Needed after first connection or errors
+            await this.clearStatus();
+
             // Done and return
             return Promise.resolve();
-        }
-
-        // Catch errors
-        catch (error) {
-
-            // Return the error
-            return Promise.reject(error);
-        }
-    }
-
-    // Sets the internal variables with the flash and page sizes provided
-    async setFlashAndPageSizes(flashSizeStr, pageSizeStr) {
-
-        // Attempt to set the flash and page sizes
-        try {
-
-            // Parse and validate that the flash size is a number
-            let flashSize = parseInt(flashSizeStr);
-
-            if (isNaN(flashSize)) {
-                throw ("Flash size is invalid. Can be as a hexadecimal value" +
-                    " (e.g. 0x20000) or as a decimal value (e.g. 131072)");
-            }
-
-            // Parse and validate that the page size is a number
-            let pageSize = parseInt(pageSizeStr);
-
-            if (isNaN(pageSize)) {
-                throw ("Page size is invalid. Can be as a hexadecimal value" +
-                    " (e.g. 0x20) or as a decimal value (e.g. 128)");
-            }
-
-            // Flash size should be divisible by 1024
-            if (flashSize % 1024 != 0) {
-                throw ("Flash size must be divisible by 1024 bytes")
-            }
-
-            // Set the flash end as an offset from 0x08000000
-            this.flashEnd = 0x08000000 + flashSize;
-
-            // Page size must be word aligned
-            if (pageSize % 4 != 0) {
-                throw ("Page size must be word alined, i.e. divisible by 4")
-            }
-
-            // Set the page size
-            this.pageSize = pageSize;
-
-            // check that pages fit into the flash size
-            if (flashSize % pageSize != 0) {
-                throw ("Flash size should be divisible by page size")
-            }
-
-            // Print info to the console
-            console.log("Flash size okay: " + flashSize / 1024 + " KB");
-            console.log("Page size okay: " + pageSize + " B");
         }
 
         // Catch errors
@@ -312,11 +319,11 @@ let usbDfuDevice = class {
     // Function which erases the device
     async erase() {
 
+        // Clear the progress bar
+        dfuProgressHandler(0);
+
         // Attempt to erase
         try {
-
-            // First clear the current status
-            await this.clearStatus();
 
             // For the entire flash, erase 1 page at a time from 0x08000000
             for (let address = 0x8000000; address < this.flashEnd; address += this.pageSize) {
@@ -349,7 +356,7 @@ let usbDfuDevice = class {
                 // Check again if it was successful
                 await this.getStatus();
 
-                // Work out the percentage done and update the progress bar
+                // Work out the percentage done
                 let done = (100 / (this.flashEnd - 0x8000000)) * (address - 0x8000000);
 
                 // Update the progress bar
@@ -368,11 +375,11 @@ let usbDfuDevice = class {
     // Function to program the device
     async program(fileArr) {
 
+        // Clear the progress bar
+        dfuProgressHandler(0);
+
         // Attempt to program
         try {
-
-            // TODO do we need to clear status?
-            // await this.clearStatus();
 
             // Set the address pointer to 0x08000000 (The start of the flash)
             await this.device.controlTransferOut({
@@ -389,39 +396,54 @@ let usbDfuDevice = class {
             // Check again if it was successful
             await this.getStatus();
 
-            // Calculate the total pages to flash
-            let totalPagesToFlash = Math.ceil(fileArr.byteLength / this.pageSize);
+            // Calculate the total blocks to flash. A block can be up to 2048 bytes
+            let totalBlocks = Math.ceil(fileArr.byteLength / 2048);
 
-            // If the total is more than the flash size, throw an error
-            if (totalPagesToFlash > (this.flashEnd - 0x08000000) / this.pageSize) {
-                throw ("File size bigger than flash size");
+            // If the the total blocks is bigger than the flash size, throw an error
+            if ((totalBlocks * 2048) > (this.flashEnd - 0x08000000)) {
+                throw ("Error: File size is bigger than flash size");
             }
 
-            // For every page
-            for (let page = 0; page < totalPagesToFlash; page++) {
+            // For every block
+            for (let block = 0; block < totalBlocks; block++) {
 
-                // Log the current page info to the console
-                console.log("Flashing " + page + " of " + totalPagesToFlash + " pages");
+                // Log the current block info to the console
+                console.log("Programming block " + (block + 1) + " of " + totalBlocks);
 
-                // Calculate the data offset and bounds based on the current page
-                let dataStart = page * this.pageSize;
-                let dataEnd = dataStart + this.pageSize;
+                // Calculate the data offset and bounds based on the current block
+                let dataStart = block * 2048;
+                let dataEnd = dataStart + 2048;
 
-                // Write page by page 
+                // Create 2048 sized data buffer to send
+                let blockData = new Uint8Array(2048);
+
+                // Copy data from the file to the dat buffer
+                blockData.set(new Uint8Array(fileArr.slice(dataStart, dataEnd)));
+
+                // Write block by block 
                 await this.device.controlTransferOut({
                     requestType: 'class',
                     recipient: 'interface',
                     request: this.dfuRequest.DFU_DNLOAD,
-                    value: 2 + page, // wValue should be the page number + 2 
+                    value: 2 + block, // wValue should be the block number + 2 
                     index: 0
-                }, new Uint8Array(fileArr.slice(dataStart, dataEnd))); // Page of data
+                }, blockData); // 2048 byte block of data to program
 
                 // Issue a get status to apply the operation
                 await this.getStatus();
 
                 // Check again if it was successful
                 await this.getStatus();
+
+                // Work out the percentage done
+                let done = (100 / totalBlocks) * block;
+
+                // Update the progress bar
+                dfuProgressHandler(done);
             }
+
+            // Done. Set the progress bar to 100%
+            dfuProgressHandler(100);
         }
 
         // Catch errors
@@ -438,8 +460,8 @@ let usbDfuDevice = class {
         // Attempt to detach
         try {
 
-            // First clear the current state
-            await this.clearStatus();
+            // Log info to console
+            console.log("Starting application");
 
             // Next download 0 bytes to the device
             await this.device.controlTransferOut({
@@ -465,14 +487,18 @@ let usbDfuDevice = class {
     // Function which disconnects the USB device
     async disconnect() {
 
-        // If the device exists and is open
+        // If the device objects exists
         if (this.device != null) {
 
-            // Close the USB device
-            await this.device.close();
+            // and the device is still open
+            if (this.device.opened) {
+
+                // Close the USB device
+                await this.device.close();
+            }
         }
 
-        // Null the device
+        // Null the device object
         this.device = null;
 
         // Call the user disconnect handler to clean up the UI

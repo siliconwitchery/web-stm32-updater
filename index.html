@@ -115,7 +115,7 @@
 
             // Disallow empty URLs
             if (fileLocationBox.value == "") {
-                throw ("No URL provided");
+                throw ("Error: No URL provided");
             }
 
             // Attempt to get the file. Note, your browser will block this if you try to run it locally
@@ -124,7 +124,7 @@
 
             // This needs to be here to catch things like 404 errors, which aren't counted as a promise failure
             if (!response.ok) {
-                throw (response.status + " " + response.statusText);
+                throw ("Error: " + response.status + " " + response.statusText);
             }
 
             // Create an array buffer containing the file data
